@@ -74,7 +74,7 @@ isn't available: type `load quick` in the console instead.
 
 | Key | Action |
 |---|---|
-| F8 | Pipelining on/off (see Performance) |
+| F8 | Pipelining on/off (off by default, see Performance) |
 | F9 / F10 | Fewer / more frames per server request |
 | F11 | Upscaling filter |
 | F12 | Performance overlay |
@@ -99,10 +99,14 @@ open **BC Quake** again, and Quake loads it next to the shareware PAK. This path
 On the server we tested on:
 
 - **Startup:** about a second.
-- **One frame:** about 85–100 ms of server time.
-- **Round trip:** the client-to-server round trip costs about as much again, so the add-in pipelines its
-  requests. The next request is sent before the previous frame arrives, timed to reach the server just as it
-  finishes. F8 turns this off for comparison.
+- **One frame:** about 90–130 ms of server time, depending on how busy the server is.
+- **Round trip:** each request costs about 120 ms more, outside the server (the network and the BC client). That's
+  the same whether or not the picture changed, so smaller frames don't help.
+- **Frames per request:** F10 renders more frames per request, which spreads those 120 ms. You get more frames per
+  second, but more input lag. F9 goes back.
+- **Pipelining (F8):** sends the next request before the previous frame arrives. BC handles one request per
+  session at a time, so the early request only waits, and the input lag doubles. It's off by default and kept for
+  comparison.
 
 F12 shows the timings per frame and a small benchmark of the AL operations the engine is made of (`Mem.Get`,
 procedure calls, float conversions and so on), measured on your server.

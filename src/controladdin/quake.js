@@ -48,7 +48,10 @@
     var running = false;
     var inFlight = 0;           // requests sent and not answered yet
     var maxInFlight = 2;        // 2 = send input right away even while a batch is being rendered
-    var pipeline = true;        // send the next request before the answer to the previous one arrives (F8)
+    // send the next request before the answer to the previous one arrives (F8). Off: BC handles one request per
+    // session at a time, so in BC the early request waits for the whole round trip of the previous one (measured:
+    // the same frames per second, twice the round trip)
+    var pipeline = false;
     var serverEstimate = 0;     // ms the server takes per request (average)
     var sendTimer = 0;
     var reqQueue = [];          // latency info per request in flight, in order
