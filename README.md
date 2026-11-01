@@ -81,9 +81,13 @@ isn't available: type `load quick` in the console instead.
 
 ### Settings and save games
 
-Quake's files are kept per user in the table *Quake User File*: `config.cfg` (settings and key bindings), the
-save games `s0.sav`–`s11.sav` and the quicksave `quick.sav`. The page **Quake Settings and Save Games** lists them. Delete `config.cfg` there to
-go back to the default settings.
+Save games are records in the table *Quake Save Game*, per user. That covers the 12 slots of the Save and Load
+menus (`s0`–`s11`), the quicksave (`quick`, F6) and saves made in the console with `save <name>`. The page
+**Quake Save Games** lists them, newest first, with the level, map, skill, kills and game time read from each save.
+Save and load in the game; delete save games on the page.
+
+Your settings and key bindings (`config.cfg`) are in the table *Quake User File*, shown on the page **Quake
+Settings**. Delete `config.cfg` there to go back to the default settings.
 
 ### The registered version
 
@@ -282,8 +286,10 @@ some surprises:
 | [src/QuakeEngine.Codeunit.al](src/QuakeEngine.Codeunit.al) | The game: Quake translated to AL (generated) |
 | [src/BCQuake.Page.al](src/BCQuake.Page.al) | The page that hosts the game and runs the frames |
 | [src/QuakePakImport.Codeunit.al](src/QuakePakImport.Codeunit.al) | Imports PAK files into the table *Quake Pak File* |
-| [src/QuakePakFile.Table.al](src/QuakePakFile.Table.al), [src/QuakeUserFile.Table.al](src/QuakeUserFile.Table.al) | Game data, and the per-user settings and save games |
-| [src/QuakePakFiles.Page.al](src/QuakePakFiles.Page.al), [src/QuakeUserFiles.Page.al](src/QuakeUserFiles.Page.al) | Pages for both tables |
+| [src/QuakePakFile.Table.al](src/QuakePakFile.Table.al) | Game data: one record per file in a PAK |
+| [src/QuakeSaveGame.Table.al](src/QuakeSaveGame.Table.al) | Save games, per user |
+| [src/QuakeUserFile.Table.al](src/QuakeUserFile.Table.al) | Settings (`config.cfg`), per user |
+| [src/QuakePakFiles.Page.al](src/QuakePakFiles.Page.al), [src/QuakeSaveGames.Page.al](src/QuakeSaveGames.Page.al), [src/QuakeUserFiles.Page.al](src/QuakeUserFiles.Page.al) | Pages for the three tables |
 | [src/controladdin/](src/controladdin/) | The *Quake Screen* control add-in: display, sound, input |
 | [Resources/PAK0.zip](Resources/PAK0.zip) | The shareware `pak0.pak` (episode 1) |
 

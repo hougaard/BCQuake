@@ -1,5 +1,5 @@
 /// <summary>
-/// The files Quake writes, per user: config.cfg (key bindings and settings) and the save games (s0.sav .. s11.sav).
+/// The files Quake writes, per user: config.cfg (settings and key bindings). Save games are in "Quake Save Game".
 /// </summary>
 table 65001 "Quake User File"
 {

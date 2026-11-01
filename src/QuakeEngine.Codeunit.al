@@ -577,10 +577,17 @@ codeunit 65000 "Quake Engine"
         StreamPos: Integer;
         PakStream: InStream;
         PakRecord: Record "Quake Pak File";
-        // the open user file (config.cfg, save games); written files are stored after the frame
-        UserData: List of [Integer];
+        // user files: save games (*.sav) are records in "Quake Save Game", other files (config.cfg) in
+        // "Quake User File". One is open at a time and read as a stream; written files are stored after the frame.
         UserFileName: Text;
         UserWriting: Boolean;
+        WriteText: TextBuilder;
+        ReadKind: Integer; // 1 = "Quake User File", 2 = "Quake Save Game", 3 = a file written in this frame
+        ReadUserFile: Record "Quake User File";
+        ReadSaveGame: Record "Quake Save Game";
+        ReadStream: InStream;
+        ReadStreamPos: Integer;
+        ReadPending: Text;
         PendingNames: List of [Text];
         PendingData: List of [Text];
         // frames
@@ -1102,6 +1109,7 @@ codeunit 65000 "Quake Engine"
         StackTop := SP;
         QuakeStarted := true;
         StartFailed := true;
+        MoveOldSaveGames();
         ResetLoopGuard(50000000, 60000); // a hang or a call that takes over a minute: an error with the call stack
         if not TryInit() then
             HandleAbort();
@@ -1665,126 +1673,277 @@ codeunit 65000 "Quake Engine"
         SoundEvents.Append(EventText);
     end;
 
-    // ---- user files: table "Quake User File", one record per user and file name
+    // ---- user files, per user. Save games (*.sav: the menu's slots s0.sav .. s11.sav, quick.sav, save <name>) are
+    // records in "Quake Save Game", every other file Quake writes (config.cfg) is a record in "Quake User File".
+
+    local procedure IsSaveGame(FileName: Text): Boolean
+    begin
+        exit(FileName.EndsWith('.sav'));
+    end;
+
+    // the save game's name in "Quake Save Game": s0.sav -> s0
+    local procedure SaveGameName(FileName: Text): Text
+    var
+        SaveGame: Record "Quake Save Game";
+    begin
+        exit(CopyStr(FileName, 1, MinInt(StrLen(FileName) - 4, MaxStrLen(SaveGame.Name))));
+    end;
+
+    local procedure UserFileKey(FileName: Text): Text
+    var
+        UserFile: Record "Quake User File";
+    begin
+        exit(CopyStr(FileName, 1, MaxStrLen(UserFile.Name)));
+    end;
 
     local procedure bc_user_size(name: Integer): Integer
     var
         UserFile: Record "Quake User File";
+        SaveGame: Record "Quake Save Game";
         FileName: Text;
     begin
         FileName := LowerCase(CStr(name));
         if PendingNames.Contains(FileName) then
             exit(StrLen(PendingData.Get(PendingNames.IndexOf(FileName))));
-        if not UserFile.Get(UserId(), FileName) then
+        if IsSaveGame(FileName) then begin
+            if not SaveGame.Get(UserId(), SaveGameName(FileName)) then
+                exit(-1);
+            exit(SaveGame.Size);
+        end;
+        if not UserFile.Get(UserId(), UserFileKey(FileName)) then
             exit(-1);
         exit(UserFile.Size);
     end;
 
     local procedure bc_user_open(name: Integer; write: Integer): Integer
-    var
-        UserFile: Record "Quake User File";
-        InS: InStream;
-        Pending: Text;
-        b: Byte;
-        i: Integer;
     begin
         UserFileName := LowerCase(CStr(name));
         UserWriting := write <> 0;
-        Clear(UserData);
-        if UserWriting then
+        ReadKind := 0;
+        if UserWriting then begin
+            Clear(WriteText);
             exit(0);
+        end;
         // a file written in this frame is not stored yet
         if PendingNames.Contains(UserFileName) then begin
-            Pending := PendingData.Get(PendingNames.IndexOf(UserFileName));
-            for i := 1 to StrLen(Pending) do
-                UserData.Add(Pending[i]);
-            exit(UserData.Count());
+            ReadPending := PendingData.Get(PendingNames.IndexOf(UserFileName));
+            ReadKind := 3;
+            exit(StrLen(ReadPending));
         end;
-        if not UserFile.Get(UserId(), UserFileName) then
+        if IsSaveGame(UserFileName) then begin
+            if not ReadSaveGame.Get(UserId(), SaveGameName(UserFileName)) then
+                exit(-1);
+            ReadSaveGame.CalcFields(Data);
+            ReadSaveGame.Data.CreateInStream(ReadStream);
+            ReadKind := 2;
+            ReadStreamPos := 0;
+            exit(ReadSaveGame.Size);
+        end;
+        if not ReadUserFile.Get(UserId(), UserFileKey(UserFileName)) then
             exit(-1);
-        UserFile.CalcFields(Data);
-        UserFile.Data.CreateInStream(InS);
-        for i := 1 to UserFile.Size do begin
-            InS.Read(b);
-            UserData.Add(b);
-        end;
-        exit(UserData.Count());
+        ReadUserFile.CalcFields(Data);
+        ReadUserFile.Data.CreateInStream(ReadStream);
+        ReadKind := 1;
+        ReadStreamPos := 0;
+        exit(ReadUserFile.Size);
     end;
 
+    // count bytes from position pos of the open file. Quake reads its files from the start, mostly a byte at a
+    // time (the Save and Load menus only read the first lines of each save game), so the file is read as a stream.
     local procedure bc_user_read(pos: Integer; dest: Integer; count: Integer): Integer
     var
+        b: Byte;
         i: Integer;
     begin
-        count := MinInt(count, UserData.Count() - pos);
-        for i := 1 to count do
-            Mem.Set(dest + i, UserData.Get(pos + i));
-        exit(MaxInt(count, 0));
+        if ReadKind = 3 then begin
+            count := MinInt(count, StrLen(ReadPending) - pos);
+            for i := 1 to count do
+                Mem.Set(dest + i, ReadPending[pos + i]);
+            exit(MaxInt(count, 0));
+        end;
+        if (ReadKind < 1) or (ReadKind > 2) then
+            exit(0);
+        if pos < ReadStreamPos then begin
+            // back to an earlier position: read from the start again
+            if ReadKind = 2 then
+                ReadSaveGame.Data.CreateInStream(ReadStream)
+            else
+                ReadUserFile.Data.CreateInStream(ReadStream);
+            ReadStreamPos := 0;
+        end;
+        while (ReadStreamPos < pos) and not ReadStream.EOS() do begin
+            ReadStream.Read(b);
+            ReadStreamPos += 1;
+        end;
+        i := 0;
+        while (i < count) and not ReadStream.EOS() do begin
+            ReadStream.Read(b);
+            i += 1;
+            Mem.Set(dest + i, b);
+        end;
+        ReadStreamPos += i;
+        exit(i);
     end;
 
     local procedure bc_user_write(buf: Integer; count: Integer)
     var
+        Ch: Char;
         i: Integer;
     begin
-        for i := 1 to count do
-            UserData.Add(Mem.Get(buf + i));
+        for i := 1 to count do begin
+            Ch := Mem.Get(buf + i);
+            WriteText.Append(Ch);
+        end;
     end;
 
     // a written file is kept as text (one character per byte) until StorePendingFiles stores it
     local procedure bc_user_close()
-    var
-        TB: TextBuilder;
-        Ch: Char;
-        i: Integer;
     begin
+        ReadKind := 0;
         if not UserWriting then
             exit;
-        for i := 1 to UserData.Count() do begin
-            Ch := UserData.Get(i);
-            TB.Append(Ch);
-        end;
         if PendingNames.Contains(UserFileName) then
-            PendingData.Set(PendingNames.IndexOf(UserFileName), TB.ToText())
+            PendingData.Set(PendingNames.IndexOf(UserFileName), WriteText.ToText())
         else begin
             PendingNames.Add(UserFileName);
-            PendingData.Add(TB.ToText());
+            PendingData.Add(WriteText.ToText());
         end;
         UserWriting := false;
-        Clear(UserData);
+        Clear(WriteText);
     end;
 
     // stores the files written during the frame (not inside the TryFunction: no database writes there)
     local procedure StorePendingFiles()
     var
-        UserFile: Record "Quake User File";
-        OutS: OutStream;
-        Content: Text;
-        b: Byte;
-        i: Integer;
         k: Integer;
-        Exists: Boolean;
     begin
-        for k := 1 to PendingNames.Count() do begin
-            Content := PendingData.Get(k);
-            Exists := UserFile.Get(UserId(), PendingNames.Get(k));
-            if not Exists then begin
-                UserFile.Init();
-                UserFile."User ID" := CopyStr(UserId(), 1, MaxStrLen(UserFile."User ID"));
-                UserFile.Name := CopyStr(PendingNames.Get(k), 1, MaxStrLen(UserFile.Name));
-            end;
-            UserFile.Data.CreateOutStream(OutS);
-            for i := 1 to StrLen(Content) do begin
-                b := Content[i];
-                OutS.Write(b);
-            end;
-            UserFile.Size := StrLen(Content);
-            UserFile."Modified At" := CurrentDateTime();
-            if Exists then
-                UserFile.Modify()
+        for k := 1 to PendingNames.Count() do
+            if IsSaveGame(PendingNames.Get(k)) then
+                StoreSaveGame(PendingNames.Get(k), PendingData.Get(k))
             else
-                UserFile.Insert();
-        end;
+                StoreUserFile(PendingNames.Get(k), PendingData.Get(k));
         Clear(PendingNames);
         Clear(PendingData);
+    end;
+
+    local procedure StoreUserFile(FileName: Text; Content: Text)
+    var
+        UserFile: Record "Quake User File";
+        OutS: OutStream;
+        Exists: Boolean;
+    begin
+        Exists := UserFile.Get(UserId(), UserFileKey(FileName));
+        if not Exists then begin
+            UserFile.Init();
+            UserFile."User ID" := CopyStr(UserId(), 1, MaxStrLen(UserFile."User ID"));
+            UserFile.Name := CopyStr(FileName, 1, MaxStrLen(UserFile.Name));
+        end;
+        UserFile.Data.CreateOutStream(OutS);
+        WriteBytes(OutS, Content);
+        UserFile.Size := StrLen(Content);
+        UserFile."Modified At" := CurrentDateTime();
+        if Exists then
+            UserFile.Modify()
+        else
+            UserFile.Insert();
+    end;
+
+    /// <summary>
+    /// Stores a save game Quake just wrote, with what its first lines say (Host_Savegame_f): the version, the comment
+    /// (the level name and the kills, with '_' for spaces), 16 spawn parameters, the skill, the map and the game time.
+    /// </summary>
+    local procedure StoreSaveGame(FileName: Text; Content: Text)
+    var
+        SaveGame: Record "Quake Save Game";
+        OutS: OutStream;
+        Lines: List of [Text];
+        NewLine: Char;
+        SaveName: Text;
+        Comment: Text;
+        SlotNo: Integer;
+        SkillNo: Integer;
+        Seconds: Decimal;
+        Ms: Integer;
+        Exists: Boolean;
+    begin
+        SaveName := SaveGameName(FileName);
+        Exists := SaveGame.Get(UserId(), SaveName);
+        if not Exists then begin
+            SaveGame.Init();
+            SaveGame."User ID" := CopyStr(UserId(), 1, MaxStrLen(SaveGame."User ID"));
+            SaveGame.Name := CopyStr(SaveName, 1, MaxStrLen(SaveGame.Name));
+        end;
+        // the Save Game and Load Game menus have the slots s0 .. s11
+        SaveGame."Slot No." := 0;
+        if SaveName.StartsWith('s') then
+            if Evaluate(SlotNo, CopyStr(SaveName, 2)) then
+                if (SlotNo >= 0) and (SlotNo <= 11) and (Format(SlotNo) = CopyStr(SaveName, 2)) then
+                    SaveGame."Slot No." := SlotNo + 1;
+        NewLine := 10;
+        Lines := CopyStr(Content, 1, 2000).Split(Format(NewLine));
+        if Lines.Count() >= 21 then begin
+            // "the_Necropolis________kills:__0/_65____": the level name in 22 characters, then the kills
+            Comment := Lines.Get(2).Replace('_', ' ');
+            SaveGame."Level Name" := CopyStr(CopyStr(Comment, 1, 22).Trim(), 1, MaxStrLen(SaveGame."Level Name"));
+            SaveGame.Kills := CopyStr(DelChr(CopyStr(Comment, 29), '=', ' '), 1, MaxStrLen(SaveGame.Kills));
+            if Evaluate(SkillNo, Lines.Get(19)) then
+                if (SkillNo >= 0) and (SkillNo <= 3) then
+                    SaveGame.Skill := SkillNo;
+            SaveGame.Map := CopyStr(Lines.Get(20), 1, MaxStrLen(SaveGame.Map));
+            if Evaluate(Seconds, Lines.Get(21), 9) then begin
+                Ms := Round(Seconds * 1000, 1);
+                SaveGame."Game Time" := Ms;
+            end;
+        end;
+        SaveGame.Data.CreateOutStream(OutS);
+        WriteBytes(OutS, Content);
+        SaveGame.Size := StrLen(Content);
+        SaveGame."Saved At" := CurrentDateTime();
+        if Exists then
+            SaveGame.Modify()
+        else
+            SaveGame.Insert();
+    end;
+
+    // one byte per character: the files are text, but may hold characters above 127 (Quake's colored letters)
+    local procedure WriteBytes(var OutS: OutStream; Content: Text)
+    var
+        b: Byte;
+        i: Integer;
+    begin
+        for i := 1 to StrLen(Content) do begin
+            b := Content[i];
+            OutS.Write(b);
+        end;
+    end;
+
+    // save games from before they had a table of their own were files in "Quake User File": move them
+    local procedure MoveOldSaveGames()
+    var
+        UserFile: Record "Quake User File";
+        InS: InStream;
+        TB: TextBuilder;
+        b: Byte;
+        Ch: Char;
+        i: Integer;
+    begin
+        UserFile.SetRange("User ID", UserId());
+        UserFile.SetFilter(Name, '*.sav');
+        if UserFile.IsEmpty() then
+            exit;
+        if UserFile.FindSet() then
+            repeat
+                UserFile.CalcFields(Data);
+                UserFile.Data.CreateInStream(InS);
+                Clear(TB);
+                for i := 1 to UserFile.Size do begin
+                    InS.Read(b);
+                    Ch := b;
+                    TB.Append(Ch);
+                end;
+                StoreSaveGame(UserFile.Name, TB.ToText());
+            until UserFile.Next() = 0;
+        UserFile.DeleteAll();
     end;
 
     // =====================================================================

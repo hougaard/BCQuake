@@ -1,8 +1,8 @@
-/// <summary>The files Quake wrote for the current user: settings (config.cfg) and save games.</summary>
+/// <summary>The files Quake wrote for the current user: the settings (config.cfg). Save games are on page "Quake Save Games".</summary>
 page 65002 "Quake User Files"
 {
     PageType = List;
-    Caption = 'Quake Settings and Save Games';
+    Caption = 'Quake Settings';
     ApplicationArea = All;
     UsageCategory = Lists;
     SourceTable = "Quake User File";
@@ -17,7 +17,7 @@ page 65002 "Quake User Files"
             {
                 field(Name; Rec.Name)
                 {
-                    ToolTip = 'The file name: config.cfg holds the settings, s0.sav .. s11.sav are save games.';
+                    ToolTip = 'The file name: config.cfg holds the settings and key bindings.';
                 }
                 field(Size; Rec.Size)
                 {
