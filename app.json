@@ -1,0 +1,35 @@
+{
+  "id": "7965c3fe-9f09-4692-9d7a-77a55dc1bee2",
+  "name": "BC Quake",
+  "publisher": "Hougaard",
+  "version": "1.0.0.0",
+  "brief": "Quake running inside Business Central.",
+  "description": "The original Quake (software renderer) translated from C to AL by c2al: the game runs in a codeunit, the PAK file lives in a table, a control add-in shows the frames and plays the sounds.",
+  "privacyStatement": "",
+  "EULA": "",
+  "help": "",
+  "url": "",
+  "logo": "",
+  "dependencies": [],
+  "screenshots": [],
+  "platform": "1.0.0.0",
+  "application": "29.0.0.0",
+  "idRanges": [
+    {
+      "from": 65000,
+      "to": 65999
+    }
+  ],
+  "resourceExposurePolicy": {
+    "allowDebugging": true,
+    "allowDownloadingSource": true,
+    "includeSourceInSymbolFile": true
+  },
+  "runtime": "18.0",
+  "features": [
+    "NoImplicitWith"
+  ],
+  "resourceFolders": [
+    "Resources"
+  ]
+}

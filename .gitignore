@@ -1,0 +1,35 @@
+# Build output
+*.app
+
+# Symbol packages (downloaded from the server)
+.alpackages/
+
+# Snapshot debugging
+.snapshots/
+
+# AL compiler state and caches
+.alcache/
+.altemplates/
+.output/
+*.g.xlf
+rad.json
+
+# VS Code settings, launch configurations and credentials
+.vscode/
+*.code-workspace
+*.flf
+*.bclicense
+
+# Test and code analysis results
+TestResults*.xml
+*.sarif
+
+# Logs
+*.log
+
+# OS and editor files
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
